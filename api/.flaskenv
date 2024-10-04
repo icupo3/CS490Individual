@@ -1,0 +1,2 @@
+FLASK_APP=sqlshit.py
+FLASK_ENV=development

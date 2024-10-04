@@ -1,4 +1,4 @@
-.App {
+/* .App {
   text-align: center;
 }
 
@@ -35,4 +35,55 @@
   to {
     transform: rotate(360deg);
   }
+} */
+
+.generic-center {
+  text-align: center;
+}
+
+.three-quarters-width {
+  width: 75%;
+}
+
+.two-thirds-width {
+  width: 66%;
+}
+
+.half-width {
+  width: 50%;
+}
+
+.third-width {
+  width: 33%;
+}
+
+.quarter-width {
+  width: 25%;
+}
+
+.fifth-width {
+  width: 20%;
+}
+
+.vertical-padding {
+  padding: 160px 80px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: center;
+}
+
+th {
+  background-color: #f2f2f2;
+}
+
+#closeMovieDetails, #movieDetailsTable {
+  visibility: hidden;
 }
