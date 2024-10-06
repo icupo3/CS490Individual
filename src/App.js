@@ -26,8 +26,8 @@ function App() {
     <div className='App'>
       <header className='App-header'>
         {/* <img src={logo} className='App-logo' alt='logo' /> */}
-        <h1 className='generic-center'>"Epic" Movie Website</h1>
-        <h2 className='generic-center'>Landing Page</h2>
+        <h1 className='generic-center'>"Epic" "Movie" "Website"</h1>
+        {/* <h2 className='generic-center'>MAKE THIS UPDATE WITH WHAT PAGE UR ON</h2> */}
         <table>
           <thead>
             <tr><td colSpan='5'>Navigate to:</td></tr>
@@ -45,15 +45,14 @@ function App() {
       </header>
       {/* BODY STARTS HERE */}
       <body>
-        {/* <Router> */}
-          <div className='content'>
-            <Routes>
-              <Route exact path='/' element={<LandingPage />} />
-              <Route exact path='/films' element={<FilmsPage />} />
-              <Route exact path='/customers' element={<CustomersPage />} />
-            </Routes>
-          </div>
-        {/* </Router> */}
+        <p>&nbsp;</p>
+        <div className='content'>
+          <Routes>
+            <Route exact path='/' element={<LandingPage />} />
+            <Route exact path='/films' element={<FilmsPage />} />
+            <Route exact path='/customers' element={<CustomersPage />} />
+          </Routes>
+        </div>
       </body>
     </div>
   );

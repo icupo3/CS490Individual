@@ -1,5 +1,6 @@
 from flask import Flask,render_template, request
 from flask_mysqldb import MySQL
+import math
 
 app = Flask(__name__)
 
@@ -28,7 +29,7 @@ def sqlFunc():
         return {"error":  f"{err}"}
 
 
-# MOVIE STUFF
+# LANDING MOVIE STUFF
 
 @app.route("/top5movies")
 def top5RentsAllTime():
@@ -86,9 +87,9 @@ def movieDetailGetter():
                 'desc': f'{err}',
             }
 
-# MOVIE STUFF
+# LANDING MOVIE STUFF
 
-# ACTOR STUFF
+# LANDING ACTOR STUFF
 
 @app.route("/top5actors")
 def top5ActorsAllTime():
@@ -163,33 +164,151 @@ LIMIT 5;""")
             'rentals5' : str(err),
         }
 
-# ACTOR STUFF
+# LANDING ACTOR STUFF
+
+# FILMS STUFF
+
+@app.route('/filmsList', methods=['GET'])
+def allFilmsPaginated():
+    try:
+        filter = request.args.get('filter')
+        page = int(request.args.get('page')) if request.args.get('page') else 1
+        search = request.args.get('search') if request.args.get('search') else ""
+
+        cur = mysql.connection.cursor()
+
+        page = (page - 1) * 10
+
+        # filmName
+        if(filter == "filmName"):
+            cur.execute(f"""SELECT COUNT(film.film_id)
+FROM category, film_category, film
+WHERE category.category_id = film_category.category_id AND film_category.film_id = film.film_id
+AND UPPER(film.title) LIKE UPPER('{search}%')""")
+            hits = cur.fetchall()[0][0]
+            if(hits == 0):
+                return {"filmsList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
+            cur.execute(f"""SELECT film.title, category.name
+FROM category, film_category, film
+WHERE category.category_id = film_category.category_id AND film_category.film_id = film.film_id
+AND UPPER(film.title) LIKE UPPER('{search}%')
+ORDER BY film.title ASC
+LIMIT 10 OFFSET {page};""")
+        # actor
+        elif(filter == "actor"):
+            cur.execute(f"""SELECT COUNT(film.film_id)
+FROM category, film_category, film, film_actor, actor
+WHERE category.category_id = film_category.category_id AND film_category.film_id = film.film_id AND film.film_id = film_actor.film_id AND film_actor.actor_id = actor.actor_id
+AND UPPER(CONCAT(actor.first_name, ' ', actor.last_name)) LIKE UPPER('%{search}%')""")
+            hits = cur.fetchall()[0][0]
+            if(hits == 0):
+                return {"filmsList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
+            cur.execute(f"""SELECT film.title, category.name, actor.first_name, actor.last_name
+FROM category, film_category, film, film_actor, actor
+WHERE category.category_id = film_category.category_id AND film_category.film_id = film.film_id AND film.film_id = film_actor.film_id AND film_actor.actor_id = actor.actor_id
+AND UPPER(CONCAT(actor.first_name, ' ', actor.last_name)) LIKE UPPER('%{search}%')
+ORDER BY actor.first_name ASC
+LIMIT 10 OFFSET {page};""")
+        # genre
+        elif(filter == "genre"):
+            cur.execute(f"""SELECT COUNT(film.film_id)
+FROM category, film_category, film
+WHERE category.category_id = film_category.category_id AND film_category.film_id = film.film_id
+AND UPPER(category.name) LIKE UPPER('{search}%')""")
+            hits = cur.fetchall()[0][0]
+            if(hits == 0):
+                return {"filmsList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
+            cur.execute(f"""SELECT film.title, category.name
+FROM category, film_category, film
+WHERE category.category_id = film_category.category_id AND film_category.film_id = film.film_id
+AND UPPER(category.name) LIKE UPPER('{search}%')
+ORDER BY film.title ASC
+LIMIT 10 OFFSET {page};""")
+        # garbage
+        else:
+            return {"filmsList": '<tr><td colSpan="5">Invalid Query</td></tr>', "pageCount": 1}
+
+        if(filter == "actor"):
+            rv = cur.fetchall()
+            returnStr = "<tr><td colSpan='2'>Title</td><td>Genre</td><td colSpan='2'>Actor Name</td></tr>\n"
+            for thing in rv:
+                returnStr = returnStr + '<tr class="filmRow"><td colSpan="2">' + str(thing[0]) + '</td><td>' + str(thing[1]) + "</td><td colSpan='2'>" + str(thing[2]) + ' ' + str(thing[3]) + '</td></tr>\n'
+        else:
+            rv = cur.fetchall()
+            returnStr = "<tr><td colSpan='3'>Title</td><td colSpan='2'>Genre</td></tr>\n"
+            for thing in rv:
+                returnStr = returnStr + '<tr class="filmRow"><td colSpan="3">' + str(thing[0]) + '</td><td colSpan="2">' + str(thing[1]) + '</td></tr>\n'            
+
+        return {"filmsList": returnStr, "pageCount": math.ceil(int(hits)/10)}
+    except Exception as err:
+        return {"filmsList":  f"<tr><td colSpan='5'>Error loading films: {err}</td></tr>\n", "pageCount": 1}
+
+# FILMS STUFF
 
 # CUSTOMERS STUFF
 
 @app.route('/customersList', methods=['GET'])
 def allCustomersPaginated():
     try:
-    
-        search = request.args.get('search')
-        page = request.args.get('page')
+        filter = request.args.get('filter')
+        page = int(request.args.get('page')) if request.args.get('page') else 1
+        search = request.args.get('search') if request.args.get('search') else ""
+
+        cur = mysql.connection.cursor()
 
         page = (page - 1) * 10
 
-        if search:
-
-            cur = mysql.connection.cursor()
+        # ID
+        if(filter == "ID"):
+            cur.execute(f"""SELECT COUNT(customer_id)
+FROM customer
+WHERE customer_id LIKE '{search}%'""")
+            hits = cur.fetchall()[0][0]
+            if(hits == 0):
+                return {"customersList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
             cur.execute(f"""SELECT customer_id, first_name, last_name
 FROM customer
-WHERE CONCAT(first_name, ' ', last_name) LIKE '%{search}%'
+WHERE customer_id LIKE '{search}%'
+ORDER BY customer_id ASC
 LIMIT 10 OFFSET {page};""")
-            rv = cur.fetchall()
-            returnStr = ""
-            for thing in rv:
-                returnStr = returnStr + '<tr><td class="actorDetailsGettable">' + str(thing[0]) + " " + str(thing[1]) + '</td></tr>\n'
-            return {"top5actors": returnStr}
+        # firstname
+        elif(filter == "firstName"):
+            cur.execute(f"""SELECT COUNT(customer_id)
+FROM customer
+WHERE LOWER(first_name) LIKE LOWER('{search}%');""")
+            hits = cur.fetchall()[0][0]
+            if(hits == 0):
+                return {"customersList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
+            cur.execute(f"""SELECT customer_id, first_name, last_name
+FROM customer
+WHERE LOWER(first_name) LIKE LOWER('{search}%')
+ORDER BY first_name ASC
+LIMIT 10 OFFSET {page};""")
+        # lastname
+        elif(filter == "lastName"):
+            cur.execute(f"""SELECT COUNT(customer_id)
+FROM customer
+WHERE LOWER(last_name) LIKE LOWER('{search}%');""")
+            hits = cur.fetchall()[0][0]
+            if(hits == 0):
+                return {"customersList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
+            cur.execute(f"""SELECT customer_id, first_name, last_name
+FROM customer
+WHERE LOWER(last_name) LIKE LOWER('{search}%')
+ORDER BY last_name ASC
+LIMIT 10 OFFSET {page};""")
+        # garbage
+        else:
+            return {"customersList": '<tr><td colSpan="5">Invalid Query</td></tr>', "pageCount": 1}
+
+        rv = cur.fetchall()
+        returnStr = "<tr><td colSpan='2'>Customer ID</td><td colSpan='3'>Customer Name</td></tr>\n"
+        for thing in rv:
+            returnStr = returnStr + '<tr class="customerRow"><td colSpan="2">' + str(thing[0]) + '</td><td colSpan="3">' + str(thing[1]) + " " + str(thing[2]) + '</td></tr>\n'
+
+        return {"customersList": returnStr, "pageCount": math.ceil(int(hits)/10)}
     except Exception as err:
-        return {"top5actors":  f"<tr><td>Error loading actors: {err}</td></tr>\n"}
+        return {"customersList":  f"<tr><td colSpan='5'>Error loading customers: {err}</td></tr>\n", "pageCount": 1}
 
 # CUSTOMERS STUFF
 
