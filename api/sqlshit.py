@@ -1,5 +1,6 @@
 from flask import Flask,render_template, request
 from flask_mysqldb import MySQL
+from datetime import datetime
 import math
 
 app = Flask(__name__)
@@ -178,6 +179,7 @@ def allFilmsPaginated():
         cur = mysql.connection.cursor()
 
         page = (page - 1) * 10
+        actorsVisibility = False
 
         # filmName
         if(filter == "filmName"):
@@ -187,28 +189,31 @@ WHERE category.category_id = film_category.category_id AND film_category.film_id
 AND UPPER(film.title) LIKE UPPER('{search}%')""")
             hits = cur.fetchall()[0][0]
             if(hits == 0):
-                return {"filmsList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
+                return {"filmsList": [{ 'title': 'No data!', 'genre': 'Try another search!' }], "pageCount": 1, "actorsVisibility": False}
             cur.execute(f"""SELECT film.title, category.name
 FROM category, film_category, film
 WHERE category.category_id = film_category.category_id AND film_category.film_id = film.film_id
 AND UPPER(film.title) LIKE UPPER('{search}%')
 ORDER BY film.title ASC
 LIMIT 10 OFFSET {page};""")
+            
         # actor
         elif(filter == "actor"):
+            actorsVisibility = True
             cur.execute(f"""SELECT COUNT(film.film_id)
 FROM category, film_category, film, film_actor, actor
 WHERE category.category_id = film_category.category_id AND film_category.film_id = film.film_id AND film.film_id = film_actor.film_id AND film_actor.actor_id = actor.actor_id
 AND UPPER(CONCAT(actor.first_name, ' ', actor.last_name)) LIKE UPPER('%{search}%')""")
             hits = cur.fetchall()[0][0]
             if(hits == 0):
-                return {"filmsList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
+                return {"filmsList": [{ 'title': 'No data!', 'genre': 'Try another search!' }], "pageCount": 1, "actorsVisibility": False}
             cur.execute(f"""SELECT film.title, category.name, actor.first_name, actor.last_name
 FROM category, film_category, film, film_actor, actor
 WHERE category.category_id = film_category.category_id AND film_category.film_id = film.film_id AND film.film_id = film_actor.film_id AND film_actor.actor_id = actor.actor_id
 AND UPPER(CONCAT(actor.first_name, ' ', actor.last_name)) LIKE UPPER('%{search}%')
 ORDER BY actor.first_name ASC
 LIMIT 10 OFFSET {page};""")
+            
         # genre
         elif(filter == "genre"):
             cur.execute(f"""SELECT COUNT(film.film_id)
@@ -217,31 +222,115 @@ WHERE category.category_id = film_category.category_id AND film_category.film_id
 AND UPPER(category.name) LIKE UPPER('{search}%')""")
             hits = cur.fetchall()[0][0]
             if(hits == 0):
-                return {"filmsList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
+                return {"filmsList": [{ 'title': 'No data!', 'genre': 'Try another search!' }], "pageCount": 1, "actorsVisibility": False}
             cur.execute(f"""SELECT film.title, category.name
 FROM category, film_category, film
 WHERE category.category_id = film_category.category_id AND film_category.film_id = film.film_id
 AND UPPER(category.name) LIKE UPPER('{search}%')
 ORDER BY film.title ASC
 LIMIT 10 OFFSET {page};""")
+            
         # garbage
         else:
-            return {"filmsList": '<tr><td colSpan="5">Invalid Query</td></tr>', "pageCount": 1}
+            return {"filmsList": [{ 'title': 'Bad Query', 'genre': 'Bad Query' }], "pageCount": 1, "actorsVisibility": False}
 
+        # the goods
         if(filter == "actor"):
-            rv = cur.fetchall()
-            returnStr = "<tr><td colSpan='2'>Title</td><td>Genre</td><td colSpan='2'>Actor Name</td></tr>\n"
-            for thing in rv:
-                returnStr = returnStr + '<tr class="filmRow"><td colSpan="2">' + str(thing[0]) + '</td><td>' + str(thing[1]) + "</td><td colSpan='2'>" + str(thing[2]) + ' ' + str(thing[3]) + '</td></tr>\n'
+            sqlRv = cur.fetchall()
+            returnJsonArr = [{ 'title': 'Title', 'genre': 'Genre', 'actorName': 'Actor Name' }]
+            for thing in sqlRv:
+                returnJsonArr.append({ 'title': str(thing[0]), 'genre': str(thing[1]), 'actorName': f"{thing[2]} {thing[3]}" })
         else:
-            rv = cur.fetchall()
-            returnStr = "<tr><td colSpan='3'>Title</td><td colSpan='2'>Genre</td></tr>\n"
-            for thing in rv:
-                returnStr = returnStr + '<tr class="filmRow"><td colSpan="3">' + str(thing[0]) + '</td><td colSpan="2">' + str(thing[1]) + '</td></tr>\n'            
+            sqlRv = cur.fetchall()
+            returnJsonArr = [{ 'title': 'Title', 'genre': 'Genre' }]
+            for thing in sqlRv:
+                returnJsonArr.append({ 'title': str(thing[0]), 'genre': str(thing[1]) })          
 
-        return {"filmsList": returnStr, "pageCount": math.ceil(int(hits)/10)}
+        return {"filmsList": returnJsonArr, "pageCount": math.ceil(int(hits)/10), "actorsVisibility": actorsVisibility}
     except Exception as err:
-        return {"filmsList":  f"<tr><td colSpan='5'>Error loading films: {err}</td></tr>\n", "pageCount": 1}
+        return {"filmsList": [{ 'title': f'Error loading data', 'genre': err }], "pageCount": 1, "actorsVisibility": False}
+
+
+@app.route('/moreMovieDetails', methods=['GET'])
+def moreMovieDetailGetter():
+    try:
+        movie = request.args.get('movie')
+
+        if movie:
+            cur = mysql.connection.cursor()
+
+            cur.execute(f"SELECT description, rating, release_year, special_features FROM film WHERE title LIKE '{movie}'")
+            movieDetails = cur.fetchall()
+            cur.execute(f"SELECT COUNT(film.film_id), film.film_id, inventory.store_id FROM inventory, film WHERE inventory.film_id = film.film_id and film.title LIKE '{movie}%' GROUP BY film.film_id, inventory.store_id;")
+            metaData = cur.fetchall()
+            if metaData:
+                invIds = []
+                for thing in metaData:
+                    invIds.append(thing[2])
+            else:
+                metaData = [["Not in inventory"]]
+                invIds = ['Not in inventory']
+            return {
+                'description': str(movieDetails[0][0]),
+                'rating': str(movieDetails[0][1]),
+                'releaseYear': str(movieDetails[0][2]),
+                'specFeat': str(movieDetails[0][3]),
+                'copies': metaData[0][0],
+                'invIds': invIds
+            }
+        else:
+            return {
+                'description': '???',
+                'rating': '???',
+                'releaseYear': '???',
+                'specFeat': '???',
+                'copies': 0,
+                'invIds': []
+            }
+    except Exception as err:
+        return {
+                'description': 'Error',
+                'rating': 'Loading',
+                'releaseYear': 'Data',
+                'specFeat': f'{err}',
+                'copies': -1,
+                'invIds': []
+            }
+
+# SHOULD NOT BE GET BUT WHO CARES
+@app.route('/rentToCustomer', methods=['GET'])
+def rentFilmToCustomer():
+    try:
+        custID = request.args.get('custID')
+        movie = request.args.get('movie')
+
+        if custID and movie:
+            cur = mysql.connection.cursor()
+            cur.execute(f"""SELECT inventory.inventory_id
+FROM inventory, film, rental
+WHERE inventory.film_id = film.film_id AND inventory.inventory_id = rental.inventory_id
+AND rental.return_date IS NOT NULL
+AND film.title LIKE '{movie}'
+LIMIT 1;""")
+            invID = cur.fetchall()[0][0]
+            print(invID)
+            current_time = datetime.now()
+            print(f"INSERT INTO rental (rental_date, inventory_id, customer_id, staff_id) VALUES ('{current_time}', {invID}, {custID}, 1);")
+            cur.execute(f"INSERT INTO rental (rental_date, inventory_id, customer_id, staff_id) VALUES ('{current_time}', {invID}, {custID}, 1);")
+            mysql.connection.commit()
+            if cur.rowcount > 0:
+                return { 'status': "Successfully rented film to customer."}
+            else:
+
+                return { 'status': "Unable to rent out film." }
+        else:
+            return {
+                'status': '???',
+            }
+    except Exception as err:
+        return {
+                'status': f'{err}'
+            }
 
 # FILMS STUFF
 
@@ -258,59 +347,201 @@ def allCustomersPaginated():
 
         page = (page - 1) * 10
 
-        # ID
         if(filter == "ID"):
-            cur.execute(f"""SELECT COUNT(customer_id)
-FROM customer
-WHERE customer_id LIKE '{search}%'""")
-            hits = cur.fetchall()[0][0]
-            if(hits == 0):
-                return {"customersList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
-            cur.execute(f"""SELECT customer_id, first_name, last_name
-FROM customer
-WHERE customer_id LIKE '{search}%'
-ORDER BY customer_id ASC
-LIMIT 10 OFFSET {page};""")
-        # firstname
+            insertionString = "customer_id"
         elif(filter == "firstName"):
-            cur.execute(f"""SELECT COUNT(customer_id)
-FROM customer
-WHERE LOWER(first_name) LIKE LOWER('{search}%');""")
-            hits = cur.fetchall()[0][0]
-            if(hits == 0):
-                return {"customersList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
-            cur.execute(f"""SELECT customer_id, first_name, last_name
-FROM customer
-WHERE LOWER(first_name) LIKE LOWER('{search}%')
-ORDER BY first_name ASC
-LIMIT 10 OFFSET {page};""")
-        # lastname
+            insertionString = "LOWER(first_name)"
         elif(filter == "lastName"):
-            cur.execute(f"""SELECT COUNT(customer_id)
-FROM customer
-WHERE LOWER(last_name) LIKE LOWER('{search}%');""")
-            hits = cur.fetchall()[0][0]
-            if(hits == 0):
-                return {"customersList": '<tr><td colSpan="5">No results</td></tr>', "pageCount": 1}
-            cur.execute(f"""SELECT customer_id, first_name, last_name
-FROM customer
-WHERE LOWER(last_name) LIKE LOWER('{search}%')
-ORDER BY last_name ASC
-LIMIT 10 OFFSET {page};""")
-        # garbage
+            insertionString = "LOWER(last_name)"
         else:
-            return {"customersList": '<tr><td colSpan="5">Invalid Query</td></tr>', "pageCount": 1}
+            return {"customersList": [{ 'custID': 'Bad Query', 'custName': 'Bad Query' }], "pageCount": 1}
 
-        rv = cur.fetchall()
-        returnStr = "<tr><td colSpan='2'>Customer ID</td><td colSpan='3'>Customer Name</td></tr>\n"
-        for thing in rv:
-            returnStr = returnStr + '<tr class="customerRow"><td colSpan="2">' + str(thing[0]) + '</td><td colSpan="3">' + str(thing[1]) + " " + str(thing[2]) + '</td></tr>\n'
+        cur.execute(f"""SELECT COUNT(customer_id) FROM customer WHERE {insertionString} LIKE '{search}%'""")
+        
+        hits = cur.fetchall()[0][0]
+        if(hits == 0):
+            return {"customersList": [{ 'custID': 'No data!', 'custName': 'Try another search!' }], "pageCount": 1}
+        
+        cur.execute(f"""SELECT customer_id, UPPER(first_name), UPPER(last_name)
+FROM customer
+WHERE {insertionString} LIKE '{search}%'
+ORDER BY {insertionString} ASC
+LIMIT 10 OFFSET {page};""")
+        
+        sqlRV = cur.fetchall()
+        returnJsonArr = [{ 'custID': 'Customer ID', 'custName': 'Customer Name' }]
+        for thing in sqlRV:
+            returnJsonArr.append({ 'custID': str(thing[0]), 'custName': f"{str(thing[1])} {str(thing[2])}" })
 
-        return {"customersList": returnStr, "pageCount": math.ceil(int(hits)/10)}
+        return {"customersList": returnJsonArr, "pageCount": math.ceil(int(hits)/10)}
     except Exception as err:
-        return {"customersList":  f"<tr><td colSpan='5'>Error loading customers: {err}</td></tr>\n", "pageCount": 1}
+        return {"customersList": [{ 'custID': 'Error', 'custName': f'{err}' }], "pageCount": 1}
+
+
+@app.route('/customerRentalHistory', methods=['GET'])
+def customerRentals():
+    try:
+        custID = request.args.get('custID')
+
+        cur = mysql.connection.cursor()
+        cur.execute(f"""SELECT film.title, rental.rental_date, rental.return_date
+FROM rental, inventory, film
+WHERE customer_id = {custID} AND rental.inventory_id = inventory.inventory_id AND inventory.film_id = film.film_id;""")
+        
+        sqlRV = cur.fetchall()
+        returnJsonArr = [{ 'title': 'Title', 'rentDate': 'Date Rented', 'returnDate': 'Date Returned' }]
+        for thing in sqlRV:
+            returnJsonArr.append({ 'title': str(thing[0]), 'rentDate': str(thing[1]), 'returnDate': str(thing[2])})
+
+        return {"rentalList": returnJsonArr}
+    except Exception as err:
+        return {"rentalList": [{ 'title': 'Error', 'rentDate': f'{err}', 'returnDate': 'Error' }]}
+
+
+@app.route('/deleteCustomer', methods=['GET'])
+def deleteCustomer():
+    try:
+        custID = request.args.get('custID')
+
+        cur = mysql.connection.cursor()
+        cur.execute(f"SELECT * FROM rental WHERE customer_id = {custID} AND rental.return_date IS NULL;")
+        hits = cur.fetchall()
+        if(len(hits) != 0):
+            return {"response": 'Unable to delete, customer has unreturned films.'}
+    
+        cur.execute(f"DELETE FROM rental WHERE customer_id = {custID};")
+        cur.execute(f"DELETE FROM payment WHERE customer_id = {custID};")
+        cur.execute(f"DELETE FROM customer WHERE customer_id = {custID};")
+        mysql.connection.commit()
+        affected_rows = cur.rowcount
+        if(affected_rows == 1):
+            return {"response": 'Able to delete, customer had no unreturned films.'}
+        elif(affected_rows > 1):
+            return {"response": 'Deleted too many customers.'}
+        return {"response": 'Unable to delete for unknown reason.'}
+    except Exception as err:
+        return {"response": f'Error: {err}'}
+
+@app.route('/addEditCustomer', methods=['GET'])
+def addCustomer():
+    try:
+        mode = request.args.get('mode')
+        fName = request.args.get('fName')
+        lName = request.args.get('lName')
+        email = request.args.get('email')
+        addy = request.args.get('addy')
+        addy2 = request.args.get('addy2')
+        city = request.args.get('city')
+        state = request.args.get('state')
+        country = request.args.get('country')
+        postalCode = request.args.get('postalCode')
+        phoneNum = request.args.get('phoneNum')
+        custID = request.args.get('custID')
+
+        if((mode == 'add' or mode == 'edit') and fName != '' and lName != '' and addy != '' and city != '' and state != '' and country != '' and phoneNum != ''):
+            cur = mysql.connection.cursor()
+            cur.execute(f"SELECT * FROM country WHERE country LIKE '{country}';")
+            hits = cur.fetchall()
+            if(len(hits) == 0):
+                cur.execute(f"INSERT INTO country(country) VALUES ('{country}');")
+                affected_rows = cur.rowcount
+                if(affected_rows == 0):
+                    return {"response": 'Unable to add new country.'}
+                elif(affected_rows > 1):
+                    return {"response": f'Little Bobby Tables. 1 {affected_rows}'}
+            cur.execute(f"SELECT country_id FROM country WHERE country LIKE '{country}';")
+            countryID = cur.fetchall()[0][0]
+
+            cur.execute(f"SELECT * FROM city WHERE city LIKE '{city}';")
+            hits = cur.fetchall()
+            if(len(hits) == 0):
+                cur.execute(f"INSERT INTO city(city, country_id) VALUES ('{city}', {countryID});")
+                affected_rows = cur.rowcount
+                if(affected_rows == 0):
+                    return {"response": 'Unable to add new city.'}
+                elif(affected_rows > 1):
+                    return {"response": f'Little Bobby Tables. 2 {affected_rows}'}
+            cur.execute(f"SELECT city_id FROM city WHERE city LIKE '{city}';")
+            cityID = cur.fetchall()[0][0]
+
+            cur.execute(f"SELECT * FROM address WHERE address LIKE '{addy}' AND district LIKE '{state}' AND city_id = {cityID} AND phone LIKE '{phoneNum}';")
+            hits = cur.fetchall()
+            if(len(hits) == 0):
+                if(postalCode != '' and addy2 != ''):
+                    cur.execute(f"INSERT INTO address(address, address2, district, city_id, postal_code, phone, location) VALUES ('{addy}', '{addy2}', '{state}', {cityID}, '{postalCode}', '{phoneNum}', ST_GeomFromText('POINT(0.0 0.0)'));")
+                    affected_rows = cur.rowcount
+                    if(affected_rows == 0):
+                        return {"response": 'Unable to add new address.'}
+                    elif(affected_rows > 1):
+                        return {"response": f'Little Bobby Tables. 3 {affected_rows}'}
+                elif(postalCode != ''):
+                    cur.execute(f"INSERT INTO address(address, district, city_id, postal_code, phone, location) VALUES ('{addy}', '{state}', {cityID}, '{postalCode}', '{phoneNum}', ST_GeomFromText('POINT(0.0 0.0)'));")
+                    affected_rows = cur.rowcount
+                    if(affected_rows == 0):
+                        return {"response": 'Unable to add new address.'}
+                    elif(affected_rows > 1):
+                        return {"response": f'Little Bobby Tables. 3 {affected_rows}'}
+                elif(addy2 != ''):
+                    cur.execute(f"INSERT INTO address(address, address2, district, city_id, phone, location) VALUES ('{addy}', '{addy2}', '{state}', {cityID}, '{phoneNum}', ST_GeomFromText('POINT(0.0 0.0)'));")
+                    affected_rows = cur.rowcount
+                    if(affected_rows == 0):
+                        return {"response": 'Unable to add new address.'}
+                    elif(affected_rows > 1):
+                        return {"response": f'Little Bobby Tables. 3 {affected_rows}'}
+                else:
+                    cur.execute(f"INSERT INTO address(address, district, city_id, phone, location) VALUES ('{addy}', '{state}', {cityID}, '{phoneNum}', ST_GeomFromText('POINT(0.0 0.0)'));")
+                    affected_rows = cur.rowcount
+                    if(affected_rows == 0):
+                        return {"response": 'Unable to add new address.'}
+                    elif(affected_rows > 1):
+                        return {"response": f'Little Bobby Tables. 3 {affected_rows}'}
+            cur.execute(f"SELECT address_id FROM address WHERE address LIKE '{addy}' AND district LIKE '{state}' AND city_id = {cityID} AND phone LIKE '{phoneNum}';")
+            addressID = cur.fetchall()[0][0]
+
+            if(mode == "add"):
+                if(email != ''):
+                    current_time = datetime.now()
+                    cur.execute(f"INSERT INTO customer(store_id, first_name, last_name, email, address_id, create_date) VALUES (1, '{fName}', '{lName}', '{email}', {addressID}, '{current_time}');")
+                    mysql.connection.commit()
+                    affected_rows = cur.rowcount
+                    if(affected_rows == 0):
+                        return {"response": 'Unable to add new customer.'}
+                    return {"response": 'Able to add new customer.'}
+                else:
+                    current_time = datetime.now()
+                    cur.execute(f"INSERT INTO customer(store_id, first_name, last_name, address_id, create_date) VALUES (1, '{fName}', '{lName}', {addressID}, '{current_time}');")
+                    mysql.connection.commit()
+                    affected_rows = cur.rowcount
+                    if(affected_rows == 0):
+                        return {"response": 'Unable to add new customer.'}
+                    return {"response": 'Able to add new customer.'}
+            elif(mode == "edit" and custID != ''):
+                if(email != ''):
+                    current_time = datetime.now()
+                    cur.execute(f"UPDATE customer set first_name = '{fName}', last_name = '{lName}', email = '{email}', address_id = {addressID} WHERE customer_id = {custID};")
+                    mysql.connection.commit()
+                    affected_rows = cur.rowcount
+                    if(affected_rows == 0):
+                        return {"response": 'Unable to edit customer.'}
+                    return {"response": 'Able to edit customer.'}
+                else:
+                    current_time = datetime.now()
+                    cur.execute(f"UPDATE customer set first_name = '{fName}', last_name = '{lName}', address_id = {addressID} WHERE customer_id = {custID};")
+                    mysql.connection.commit()
+                    affected_rows = cur.rowcount
+                    if(affected_rows == 0):
+                        return {"response": 'Unable to edit customer.'}
+                    return {"response": 'Able to edit customer.'}
+        else:
+            return {"response": 'Missing argument or mode is incorrect'}
+        return {"response": 'Unable to add for unknown reason.'}
+    except Exception as err:
+        return {"response": f'Error: {err}'}
+    return {'status': ''}
 
 # CUSTOMERS STUFF
+
+
 
 
 if __name__ == "__main__":

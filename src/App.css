@@ -41,8 +41,16 @@
   text-align: center;
 }
 
+.full-width {
+  width: 100%;
+}
+
 .three-quarters-width {
   width: 75%;
+}
+
+.seven-tenths-width {
+  width: 70%;
 }
 
 .two-thirds-width {
@@ -51,6 +59,10 @@
 
 .half-width {
   width: 50%;
+}
+
+.thirtyfive-width  {
+  width: 35%;
 }
 
 .third-width {
@@ -63,6 +75,10 @@
 
 .fifth-width {
   width: 20%;
+}
+
+.tenth-width {
+  width: 10%;
 }
 
 .vertical-padding {
